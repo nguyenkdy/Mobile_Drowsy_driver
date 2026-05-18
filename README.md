@@ -1,5 +1,5 @@
 
-# MyIoTApplication — Azure Blob + ExoPlayer IoT Video Player
+# MyIoTApplication — Drowsiness detection for driver
 
 This Android app (package `com.example.myiotapplication`) is a simple IoT-oriented video player that:
 
