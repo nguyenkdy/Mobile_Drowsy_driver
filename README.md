@@ -1,165 +1,77 @@
-# Azure Blob Video Player - IoT Application
 
-This Android application connects to Azure Blob Storage and continuously plays videos. Key features include:
+# MyIoTApplication — Azure Blob + ExoPlayer IoT Video Player
 
-- **Automatic Latest Video Detection**: Always plays the newest video from your Azure Blob container
-- **Auto-Loop Playback**: Videos automatically repeat when they end
-- **Real-Time Updates**: Monitors the blob container every 5 seconds for new videos
-- **Instant Switching**: Automatically switches to a new video when it's uploaded to the blob
-- **Landscape Mode**: Optimized for portrait/landscape IoT displays
+This Android app (package `com.example.myiotapplication`) is a simple IoT-oriented video player that:
 
-## Prerequisites
+- Streams the latest .mp4 video from an Azure Blob Storage container using the Azure Java SDK
+- Continuously loops the routine video (ExoPlayer repeat mode)
+- Polls the container periodically (every 5 seconds by default) and automatically switches to a newer video when found
+- Provides a separate "Live Stream" screen that plays an HLS stream (Cloudflare) and is opened/closed by a Firebase Realtime Database flag
 
-1. **Azure Storage Account**
-   - Create/have access to an Azure Storage Account
-   - Create a blob container for your videos
-   - Ensure the container allows **public/anonymous access** (or update the code to use SAS tokens)
-   - Note your **connection string**
+The app is implemented in Java and the main runtime files are under `app/src/main/java/com/example/myiotapplication/`:
 
-2. **Android Device/Emulator**
-   - Android 8.0+ (API level 26+)
-   - Internet connectivity
+- `VideoPlayerActivity.java` — launcher activity. Plays the latest routine video and monitors for updates.
+- `LiveStreamActivity.java` — plays a Cloudflare HLS live stream.
+- `BlobStorageClient.java` — Azure Blob Storage helper: lists blobs, filters for `.mp4`, returns latest blob and its URL.
+- `AppConfig.java` — simple, hard-coded configuration constants for quick testing (connection string, container name, live stream URL).
 
-## Configuration Steps
+Important build info (from `app/build.gradle.kts`): minSdk 26, targetSdk 36. Key libraries include ExoPlayer and the Azure Storage Blob SDK.
 
-### 1. Get Your Azure Connection String
+Quick checklist
 
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Navigate to your Storage Account
-3. Go to **Settings > Access keys**
-4. Copy the **Connection string** (either key1 or key2)
+- [x] Update `AppConfig.java` with your Azure connection string and container name for testing
+- [x] Optionally update `CLOUDFLARE_LIVE_STREAM_URL` in `AppConfig.java` for HLS live playback
+- [x] Open the project in Android Studio (recommended) or build via Gradle
 
-### 2. Create/Use Blob Container
+Prerequisites
 
-1. In your Storage Account, go to **Data storage > Containers**
-2. Create a container (or use existing one)
-3. Container must be set to allow **public access** (or update authentication method in code)
-   - Settings > Change access level > Container (Anonymous read access for blobs)
+- Android Studio or a Java 11 SDK + Android SDK (compileSdk 36)
+- An Android device or emulator (API level 26+)
+- An Azure Storage account and a blob container containing `.mp4` files (for quick testing the container can be public)
+- (Optional) Firebase Realtime Database URL used by the app: `https://my-iot-project-658d2-default-rtdb.asia-southeast1.firebasedatabase.app/` — the code listens at `iot_status/is_sleeping` to show/close Live Stream UI
 
-### 3. Upload Test Videos
+Configuration (quick)
 
-- Upload MP4 video files to your blob container
-- Videos must have `.mp4` extension
-- The app will play the most recently modified video
+1. Edit `app/src/main/java/com/example/myiotapplication/AppConfig.java` and set:
 
-### 4. Run the App
+   - `AZURE_CONNECTION_STRING` — your storage account connection string (for quick testing only)
+   - `CONTAINER_NAME` — the blob container name that contains `.mp4` files
+   - `CLOUDFLARE_LIVE_STREAM_URL` — HLS URL to play in `LiveStreamActivity` (optional)
 
-1. Build and install the APK on your Android device
-2. Launch the app
-3. Enter the **Connection String** and **Container Name**
-4. Tap **"Connect and Play"**
-5. The app will start playing the latest video
+   Note: The app currently uses the connection string directly in code. Do not include production secrets in source control.
 
-## How It Works
+2. Ensure your container contains `.mp4` files. The app chooses the newest by creation/modified time.
 
-1. **Initialization**: App connects to Azure Blob Storage using the provided connection string
-2. **Video Discovery**: Scans container for `.mp4` files, sorted by modification time
-3. **Playback**: Streams the latest video using ExoPlayer
-4. **Looping**: Video automatically repeats when finished
-5. **Monitoring**: Every 5 seconds, checks if a newer video has been uploaded
-6. **Auto-Switch**: When a new video is detected, playback automatically switches
+Build & Run (Windows, PowerShell examples)
 
-## Architecture
+Open a PowerShell in the project root (`D:\MyApplicationIoT`) and run:
 
-### Main Components
+```powershell
+.
+# Build debug APK
+.\gradlew assembleDebug
 
-- **MainActivity.java**: Login/Configuration screen
-  - Accepts connection string and container name
-  - Saves configuration to SharedPreferences
-  - Validates connection before launching player
+# Install on a connected device (requires adb on PATH)
+.\gradlew installDebug
 
-- **VideoPlayerActivity.java**: Main playback screen
-  - Uses ExoPlayer for video streaming
-  - Implements repeat-all playback mode
-  - Monitors for new videos every 5 seconds
-  - Handles player lifecycle and errors
-
-- **BlobStorageClient.java**: Azure Blob Storage integration
-  - Lists blobs in container
-  - Filters for MP4 files
-  - Gets latest video metadata
-  - Generates direct blob URLs for streaming
-
-## Customization
-
-### Change Monitoring Interval
-Edit `VideoPlayerActivity.java`:
-```java
-private static final int MONITOR_INTERVAL = 5000; // Change to desired milliseconds
+# Or open the project with Android Studio and Run/Debug as usual
 ```
 
-### Enable SAS Token Authentication
-If your blob is private, update `BlobStorageClient.java` to generate SAS tokens:
-```java
-// Replace getLatestVideoUrl() to generate SAS URLs
-```
+Behavior details
 
-### Change Landscape Orientation
-In `AndroidManifest.xml`, remove or change:
-```xml
-android:screenOrientation="landscape"
-```
+- The launcher activity is `VideoPlayerActivity` (declared as MAIN/LAUNCHER in `AndroidManifest.xml`) and is locked to landscape by default (`android:screenOrientation="landscape"`).
+- `VideoPlayerActivity`:
+  - Creates a `BlobStorageClient` with values from `AppConfig` and uses `getLatestVideo()`/`getLatestVideoUrl()` to stream the newest `.mp4` with ExoPlayer.
+  - Uses `player.setRepeatMode(Player.REPEAT_MODE_ALL)` so the routine video loops.
+  - Monitors for new videos by calling `containerClient.listBlobs()` via `BlobStorageClient.isNewVideoAvailable(...)` every 5 seconds (see `startRoutineMonitoring()` in `VideoPlayerActivity.java`).
+  - Shows a "Alert/Live" button when the Firebase flag `iot_status/is_sleeping` is true. Pressing it opens `LiveStreamActivity`.
+- `LiveStreamActivity`:
+  - Plays an HLS stream using ExoPlayer (HlsMediaSource) and closes automatically when Firebase signals the alert cleared.
 
-## Troubleshooting
+Where to change common settings
 
-### "No videos found in container"
-- Verify MP4 files exist in the container
-- Ensure files have `.mp4` extension (case-sensitive)
-- Check container access permissions
-
-### "Connection failed"
-- Verify connection string is correct
-- Check internet connectivity
-- Ensure container name is spelled correctly
-
-### Video won't play
-- Verify blob has public access
-- Try uploading a different MP4 file
-- Check that the GES (Graphics Execution Structure) is supported on your device
-
-### App crashes after connecting
-- Check logcat for detailed error messages
-- Verify the MP4 file is not corrupted
-- Ensure device has sufficient storage
-
-## Security Considerations
-
-⚠️ **Important**: Currently, this app stores the connection string in SharedPreferences (local device storage). For production:
-
-1. Use **SAS tokens** instead of full connection strings
-2. Implement **encrypted storage** for sensitive credentials
-3. Set **blob-level access restrictions**
-4. Use Azure AD authentication if possible
-5. Implement **SSL/TLS** pinning
-
-## Development Notes
-
-- **Min API Level**: 26 (Android 8.0)
-- **Target API Level**: 36
-- **Dependencies**:
-  - ExoPlayer 2.18.7 (video playback)
-  - Azure Storage Blob SDK 12.14.1
-  - Material Components for UI
-
-## Example Video File Names
-
-Good examples for testing:
-- `routine_video_001.mp4`
-- `stream_20260515_100001.mp4`
-- `video_latest.mp4`
-
-## Future Enhancements
-
-- [ ] Support for multiple video formats (WebM, HLS)
-- [ ] Cloud video recording integration
-- [ ] Advanced scheduling/filtering
-- [ ] Playlist management
-- [ ] Multi-camera support
-- [ ] Statistics and logging
-- [ ] Secure credential storage
-
-## License & Support
-
-Built for IoT video streaming applications. Feel free to modify and extend for your needs.
-
+- Change the monitoring interval: edit the delay in `VideoPlayerActivity.startRoutineMonitoring()` — currently `monitorHandler.postDelayed(monitorRunnable, 5000);` (5000ms).
+- Change Azure credentials: `AppConfig.java`.
+- Change live stream URL: `AppConfig.java` (CLOUDFLARE_LIVE_STREAM_URL).
+- Change orientation: `AndroidManifest.xml` (remove or edit `android:screenOrientation` on `VideoPlayerActivity`).
 
