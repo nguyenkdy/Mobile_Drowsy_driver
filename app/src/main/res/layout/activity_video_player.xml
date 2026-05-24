@@ -37,6 +37,21 @@
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSelectVideo"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="Danh sách"
+                android:textColor="#80CBC4"
+                android:textSize="14sp"
+                app:icon="@android:drawable/ic_menu_sort_by_size"
+                app:iconTint="#80CBC4"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
         </androidx.constraintlayout.widget.ConstraintLayout>
     </com.google.android.material.card.MaterialCardView>
 
@@ -72,6 +87,7 @@
         android:layout_width="64dp"
         android:layout_height="64dp"
         android:indeterminateTint="#80CBC4"
+        android:elevation="6dp"
         app:layout_constraintBottom_toBottomOf="@id/playerContainer"
         app:layout_constraintEnd_toEndOf="@id/playerContainer"
         app:layout_constraintStart_toStartOf="@id/playerContainer"

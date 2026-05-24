@@ -40,15 +40,6 @@ public class BlobStorageClient {
         
         Log.d(TAG, "Getting container client for: " + containerName);
         containerClient = blobServiceClient.getBlobContainerClient(containerName);
-        
-        // Test connectivity
-        try {
-            containerClient.getProperties();
-            Log.d(TAG, "Container connection successful");
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to connect to container", e);
-            throw e;
-        }
     }
 
     /**
@@ -59,12 +50,19 @@ public class BlobStorageClient {
         Log.d(TAG, "Getting latest video URL...");
         VideoBlob latestVideo = getLatestVideo();
         if (latestVideo != null) {
-            String url = containerClient.getBlobClient(latestVideo.getName()).getBlobUrl();
-            Log.d(TAG, "Latest video URL: " + url);
-            return url;
+            String finalUrl = containerClient.getBlobClient(latestVideo.getName()).getBlobUrl();
+            Log.d(TAG, "Latest video URL: " + finalUrl);
+            return finalUrl;
         }
         Log.w(TAG, "No latest video found");
         return null;
+    }
+
+    /**
+     * Get URL for a specific video
+     */
+    public String getVideoUrl(String videoName) {
+        return containerClient.getBlobClient(videoName).getBlobUrl();
     }
 
     /**
