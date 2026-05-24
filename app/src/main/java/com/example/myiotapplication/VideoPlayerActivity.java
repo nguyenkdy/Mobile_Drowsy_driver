@@ -58,6 +58,7 @@ public class VideoPlayerActivity extends AppCompatActivity {
 
     private boolean wasSleeping = false;
     private boolean wasYawning = false;
+    private android.widget.TextView tvYawnAlert;
     private static final String CHANNEL_ID = "drowsy_alerts";
 
     @Override
@@ -76,6 +77,7 @@ public class VideoPlayerActivity extends AppCompatActivity {
         playerView = findViewById(R.id.playerView);
         loadingProgressBar = findViewById(R.id.loadingProgressBar);
         statusTextView = findViewById(R.id.statusTextView);
+        tvYawnAlert = findViewById(R.id.tvYawnAlert);
         btnAlertLive = findViewById(R.id.btnAlertLive);
         btnSelectVideo = findViewById(R.id.btnSelectVideo);
 
@@ -179,43 +181,76 @@ public class VideoPlayerActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 List<BlobStorageClient.VideoBlob> videos = blobClient.getAllVideos();
-                List<String> options = new ArrayList<>();
-                options.add("[ 🔴 XEM LIVE STREAM ]");
-                options.add("[ 🔄 BẬT TỰ ĐỘNG CHUYỂN VIDEO MỚI ]");
-                
+                List<String> videoNames = new ArrayList<>();
                 for (BlobStorageClient.VideoBlob v : videos) {
-                    options.add(v.getName());
+                    videoNames.add(v.getName());
                 }
 
                 runOnUiThread(() -> {
-                    String[] items = options.toArray(new String[0]);
-                    new android.app.AlertDialog.Builder(VideoPlayerActivity.this)
-                        .setTitle("Chọn Video")
-                        .setItems(items, (dialog, which) -> {
-                            if (which == 0) {
-                                Intent intent = new Intent(VideoPlayerActivity.this, LiveStreamActivity.class);
-                                startActivity(intent);
-                            } else if (which == 1) {
-                                isAutoPlayMode = true;
-                                loadAndPlayLatestRoutine();
-                                Toast.makeText(this, "Đã bật: Tự động tải video mới nhất", Toast.LENGTH_SHORT).show();
-                            } else {
-                                isAutoPlayMode = false;
-                                String selectedName = items[which];
-                                currentVideoName = selectedName;
-                                new Thread(() -> {
-                                    String url = blobClient.getVideoUrl(selectedName);
-                                    playVideoUrl(url, selectedName);
-                                }).start();
-                                Toast.makeText(this, "Đã tắt tự động: Đang phát " + selectedName, Toast.LENGTH_SHORT).show();
-                            }
-                        })
-                        .show();
+                    android.app.Dialog dialog = new android.app.Dialog(VideoPlayerActivity.this);
+                    dialog.setContentView(R.layout.dialog_video_selector);
+                    if (dialog.getWindow() != null) {
+                        dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+                    }
+
+                    android.widget.Button btnLive = dialog.findViewById(R.id.btnDialogLiveStream);
+                    android.widget.Button btnAuto = dialog.findViewById(R.id.btnDialogAutoPlay);
+                    android.widget.LinearLayout layoutFolder = dialog.findViewById(R.id.layoutFolderHeader);
+
+                    layoutFolder.setOnClickListener(v -> {
+                        dialog.dismiss();
+                        showOnlyVideoListDialog(videoNames);
+                    });
+
+                    btnLive.setOnClickListener(v -> {
+                        dialog.dismiss();
+                        Intent intent = new Intent(VideoPlayerActivity.this, LiveStreamActivity.class);
+                        startActivity(intent);
+                    });
+
+                    btnAuto.setOnClickListener(v -> {
+                        dialog.dismiss();
+                        isAutoPlayMode = true;
+                        loadAndPlayLatestRoutine();
+                        Toast.makeText(this, "Đã bật: Tự động tải video mới nhất", Toast.LENGTH_SHORT).show();
+                    });
+
+                    dialog.show();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> Toast.makeText(this, "Lỗi tải danh sách: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
         }).start();
+    }
+
+    private void showOnlyVideoListDialog(List<String> videoNames) {
+        android.app.Dialog dialog = new android.app.Dialog(VideoPlayerActivity.this);
+        dialog.setContentView(R.layout.dialog_cloud_video_list);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        android.widget.ListView listView = dialog.findViewById(R.id.listViewOnlyCloudVideos);
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<String>(this, R.layout.item_video_cloud, R.id.tvVideoName, videoNames);
+        listView.setAdapter(adapter);
+
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            dialog.dismiss();
+            isAutoPlayMode = false;
+            String selectedName = videoNames.get(position);
+            currentVideoName = selectedName;
+            new Thread(() -> {
+                try {
+                    String url = blobClient.getVideoUrl(selectedName);
+                    playVideoUrl(url, selectedName);
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(this, "Lỗi lấy video: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                }
+            }).start();
+            Toast.makeText(this, "Đã tắt tự động: Đang phát " + selectedName, Toast.LENGTH_SHORT).show();
+        });
+
+        dialog.show();
     }
 
     private void setupFirebaseListener() {
@@ -224,11 +259,14 @@ public class VideoPlayerActivity extends AppCompatActivity {
         alertRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot snapshot) {
-                Boolean isSleeping = snapshot.child("is_sleeping").getValue(Boolean.class);
-                Boolean isYawning = snapshot.child("is_yawning").getValue(Boolean.class);
+                // Log toàn bộ dữ liệu trả về để debug
+                Log.d("FirebaseYawn", "Data thay đổi: " + snapshot.getValue());
 
-                boolean currentSleeping = isSleeping != null && isSleeping;
-                boolean currentYawning = isYawning != null && isYawning;
+                Object sleepingObj = snapshot.child("is_sleeping").getValue();
+                Object yawningObj = snapshot.child("is_yawning").getValue();
+
+                boolean currentSleeping = sleepingObj != null && sleepingObj.toString().equalsIgnoreCase("true");
+                boolean currentYawning = yawningObj != null && yawningObj.toString().equalsIgnoreCase("true");
 
                 if (currentSleeping) {
                     btnAlertLive.setVisibility(View.VISIBLE);
@@ -241,6 +279,11 @@ public class VideoPlayerActivity extends AppCompatActivity {
 
                 if (currentYawning && !wasYawning) {
                     showNotification("CẢNH BÁO", "Tài xế đang ngáp - Có dấu hiệu buồn ngủ!", 2);
+                    
+                    // Hiện Banner đỏ rực ngay giữa màn hình
+                    tvYawnAlert.setVisibility(View.VISIBLE);
+                    // Tự tắt sau 3 giây
+                    new android.os.Handler().postDelayed(() -> tvYawnAlert.setVisibility(View.GONE), 3000);
                 }
 
                 wasSleeping = currentSleeping;
